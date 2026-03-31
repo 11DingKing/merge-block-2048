@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: game2048-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: game2048
+      MYSQL_USER: game2048
+      MYSQL_PASSWORD: game2048pass
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - game2048-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: game2048-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - game2048-network
+    restart: unless-stopped
+
+  frontend-user:
+    build:
+      context: ./frontend-user
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://localhost:8000
+    container_name: game2048-frontend-user
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+    networks:
+      - game2048-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  game2048-network:
+    driver: bridge
