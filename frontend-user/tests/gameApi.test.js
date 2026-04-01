@@ -130,4 +130,63 @@ describe('Game API', () => {
       }
     })
   })
+
+  describe('undo', () => {
+    it('应该成功撤销上一步操作', async () => {
+      const mockResponse = {
+        data: {
+          board: [[2, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+          score: 0,
+          best_score: 10,
+          game_over: false,
+          won: false,
+          success: true
+        }
+      }
+
+      const mockPost = vi.fn().mockResolvedValue(mockResponse)
+      axios.create.mockReturnValue({
+        post: mockPost
+      })
+
+      const result = await gameApi.undo(1)
+
+      expect(result).toEqual(mockResponse.data)
+      expect(result.success).toBe(true)
+      expect(mockPost).toHaveBeenCalledWith('/api/undo/', {
+        game_id: 1
+      })
+    })
+
+    it('应该处理撤销不可用的情况', async () => {
+      const mockResponse = {
+        data: {
+          board: [[2, 4, 8, 16], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+          score: 30,
+          best_score: 30,
+          game_over: false,
+          won: false,
+          success: false
+        }
+      }
+
+      const mockPost = vi.fn().mockResolvedValue(mockResponse)
+      axios.create.mockReturnValue({
+        post: mockPost
+      })
+
+      const result = await gameApi.undo(1)
+
+      expect(result.success).toBe(false)
+    })
+
+    it('应该处理撤销失败的情况', async () => {
+      const mockError = new Error('Undo failed')
+      axios.create.mockReturnValue({
+        post: vi.fn().mockRejectedValue(mockError)
+      })
+
+      await expect(gameApi.undo(999)).rejects.toThrow('Undo failed')
+    })
+  })
 })
