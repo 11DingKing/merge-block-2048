@@ -21,7 +21,10 @@ def new_game(request):
         board=board,
         score=0,
         game_over=False,
-        won=False
+        won=False,
+        previous_board=[],
+        previous_score=0,
+        can_undo=False
     )
     
     logger.info(f"New game created with id={game.id}")
@@ -31,7 +34,8 @@ def new_game(request):
         'score': game.score,
         'best_score': game.best_score,
         'game_over': game.game_over,
-        'won': game.won
+        'won': game.won,
+        'can_undo': game.can_undo
     })
 
 
@@ -60,16 +64,24 @@ def move(request):
                 'board': game.board,
                 'score': game.score,
                 'game_over': True,
-                'won': game.won
+                'won': game.won,
+                'can_undo': game.can_undo
             })
         
         board = [row[:] for row in game.board]  # 深拷贝
         old_board = [row[:] for row in board]
+        old_score = game.score
         
         # 执行移动
         moved, score_gained = move_board(board, direction)
         
         if moved:
+            # 只有还没有撤销过才能保存上一步状态
+            if not game.can_undo:
+                game.previous_board = [row[:] for row in old_board]
+                game.previous_score = old_score
+                game.can_undo = True
+            
             # 添加新数字
             add_random_tile(board)
             game.board = board
@@ -96,7 +108,8 @@ def move(request):
             'best_score': game.best_score,
             'game_over': game.game_over,
             'won': game.won,
-            'moved': moved
+            'moved': moved,
+            'can_undo': game.can_undo
         })
     
     except Exception as e:
@@ -221,3 +234,56 @@ def has_won(board):
             if board[i][j] == 2048:
                 return True
     return False
+
+
+@csrf_exempt
+def undo(request):
+    """处理撤销操作"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        game_id = data.get('game_id')
+        
+        if not game_id:
+            return JsonResponse({'error': 'game_id required'}, status=400)
+        
+        try:
+            game = GameSession.objects.get(id=game_id)
+        except GameSession.DoesNotExist:
+            logger.warning(f"Game not found: id={game_id}")
+            return JsonResponse({'error': 'Game not found'}, status=404)
+        
+        if not game.can_undo:
+            return JsonResponse({
+                'error': 'Cannot undo',
+                'board': game.board,
+                'score': game.score,
+                'best_score': game.best_score,
+                'game_over': game.game_over,
+                'won': game.won,
+                'can_undo': False
+            }, status=400)
+        
+        # 执行撤销
+        game.board = [row[:] for row in game.previous_board]
+        game.score = game.previous_score
+        game.can_undo = False
+        game.game_over = False  # 撤销后游戏重新开始
+        
+        game.save()
+        logger.info(f"Game {game_id}: undo successful")
+        
+        return JsonResponse({
+            'board': game.board,
+            'score': game.score,
+            'best_score': game.best_score,
+            'game_over': game.game_over,
+            'won': game.won,
+            'can_undo': False
+        })
+    
+    except Exception as e:
+        logger.exception(f"Error processing undo for game {game_id}: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
