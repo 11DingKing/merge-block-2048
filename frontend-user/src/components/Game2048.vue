@@ -51,7 +51,10 @@
       </div>
     </div>
 
-    <button class="new-btn" @click="startGame">🔄 New Game</button>
+    <div class="button-group">
+      <button class="new-btn" @click="startGame">🔄 New Game</button>
+      <button class="undo-btn" @click="undo" :disabled="!canUndo">↩️ Undo</button>
+    </div>
     
     <p class="hint">💡 拖拽任意方块滑动，合并相同数字</p>
   </div>
@@ -75,6 +78,7 @@ const tiles = ref([])
 const shaking = ref(false)
 const scoreAdd = ref(0)
 const scoreKey = ref(0)
+const canUndo = ref(false)
 
 // Drag state
 const draggingTile = ref(null)
@@ -196,6 +200,7 @@ async function startGame() {
     won.value = false
     showOverlay.value = false
     scoreAdd.value = 0
+    canUndo.value = res.canUndo
     tiles.value = createTiles(res.board)
   } catch {
     toast.error('Failed to start game')
@@ -221,6 +226,7 @@ async function move(dir) {
       
       score.value = res.score
       bestScore.value = res.best_score
+      canUndo.value = res.canUndo
       updateTiles(res.board)
       if (res.won) won.value = true
       if (res.game_over) gameOver.value = true
@@ -228,6 +234,27 @@ async function move(dir) {
     }
   } catch {
     toast.error('Move failed')
+  }
+}
+
+/**
+ * 撤销上一步操作
+ * 每局游戏只允许撤销一次
+ */
+async function undo() {
+  if (!canUndo.value) return
+  try {
+    const res = await gameApi.undo(gameId.value)
+    score.value = res.score
+    bestScore.value = res.best_score
+    canUndo.value = res.canUndo
+    gameOver.value = res.game_over
+    won.value = res.won
+    showOverlay.value = false
+    tiles.value = createTiles(res.board)
+    toast.success('已撤销上一步操作')
+  } catch {
+    toast.error('撤销失败')
   }
 }
 
@@ -441,6 +468,11 @@ onMounted(startGame)
   cursor: pointer;
 }
 
+.button-group {
+  display: flex;
+  gap: 12px;
+}
+
 .new-btn {
   background: linear-gradient(90deg, #f39c12, #e74c3c);
   color: #fff;
@@ -451,6 +483,26 @@ onMounted(startGame)
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(243,156,18,0.4);
+}
+
+.undo-btn {
+  background: linear-gradient(90deg, #6c5ce7, #a29bfe);
+  color: #fff;
+  border: none;
+  padding: 14px 28px;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+  transition: all 0.3s ease;
+}
+
+.undo-btn:disabled {
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.3);
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .hint {
